@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>AstroLokal Poojas</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="tokens.css?v=13" />
+<link rel="stylesheet" href="styles.css?v=13" />
+</head>
+<body>
+<div id="app"></div>
+
+<script src="config.js?v=13"></script>
+<script src="pricing.js?v=13"></script>
+<script src="poojas.js?v=13"></script>
+<script src="astrologers.js?v=13"></script>
+<script src="pooja-art.js?v=13"></script>
+<script src="copy.js?v=13"></script>
+
+<!-- PostHog snippet — only activates if CONFIG.POSTHOG_KEY is a real key.
+     Until then, analytics.js falls back to console logging. -->
+<script>
+  (function () {
+    if (!window.CONFIG || window.CONFIG.ANALYTICS_PROVIDER !== "posthog") return;
+    if (!window.CONFIG.POSTHOG_KEY || window.CONFIG.POSTHOG_KEY.indexOf("PLACEHOLDER") === 0) return;
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]);t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    window.posthog.init(window.CONFIG.POSTHOG_KEY, { api_host: window.CONFIG.POSTHOG_HOST });
+  })();
+</script>
+
+<script src="analytics.js?v=13"></script>
+<script src="app.js?v=13"></script>
+</body>
+</html>
