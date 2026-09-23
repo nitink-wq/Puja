@@ -67,8 +67,10 @@ img {
 }
 
 /* ---------- Header ---------- */
-/* Transparent + blurred so it blends into the page gradient instead of reading
-   as a hard-edged bar sitting on top of the content. */
+/* No background color/tint of its own - just blur. A tinted overlay here
+   would read as a slightly different shade than the page gradient showing
+   through it, creating a visible seam right at the header's bottom edge.
+   Pure blur renders the same gradient, just softened, so it merges cleanly. */
 .app-header {
   position: sticky;
   top: 0;
@@ -78,9 +80,9 @@ img {
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-4);
-  background: linear-gradient(rgba(255, 248, 240, 0.92), rgba(255, 248, 240, 0.75));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: transparent;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .app-header-brand {
@@ -102,7 +104,7 @@ img {
   letter-spacing: 0.2px;
 }
 
-/* Shared circular icon-button style used for back/search/share — same treatment
+/* Shared circular icon-button style used for back/search/share - same treatment
    on every screen so the header reads identically everywhere. */
 .icon-btn-circle {
   width: 38px;
@@ -141,38 +143,6 @@ img {
 
 .list-hero {
   margin-bottom: var(--space-6);
-}
-
-.waitlist-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  background: linear-gradient(135deg, var(--color-panel-secondary), var(--color-panel-primary));
-  border: 1px solid rgba(244, 87, 34, 0.18);
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
-.waitlist-banner-icon {
-  flex: none;
-  font-size: 20px;
-  line-height: 1;
-  margin-top: 1px;
-}
-
-.waitlist-banner-title {
-  font-family: var(--font-heading);
-  font-weight: var(--fw-bold);
-  font-size: var(--fs-small);
-  color: var(--color-text);
-  margin-bottom: 2px;
-}
-
-.waitlist-banner-body {
-  font-size: var(--fs-caption);
-  color: var(--color-text-muted);
-  line-height: 1.4;
 }
 
 .list-title {
@@ -547,12 +517,18 @@ img {
   flex: 0 0 100%;
   scroll-snap-align: start;
   height: 256px;
+  background: var(--color-card);
 }
 
 .carousel-slide img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* fill, not cover/contain - the item/samagri shot has labels near every
+     edge, so cropping (cover) cut them off, and contain left empty
+     letterbox bars on the sides instead of filling the width. Fill
+     stretches the image to fully cover the frame with no crop and no gaps -
+     a bit of aspect distortion is an acceptable tradeoff here. */
+  object-fit: fill;
 }
 
 .carousel::after {
@@ -664,7 +640,7 @@ img {
 .detail-section {
   position: relative;
   background: var(--color-surface);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-4);
   margin-bottom: var(--space-4);
   box-shadow: var(--shadow-card);
@@ -753,7 +729,7 @@ img {
 
 .astro-card {
   background: var(--color-panel-secondary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-3);
   display: flex;
   align-items: center;
@@ -927,7 +903,7 @@ img {
   width: 100%;
   background: var(--color-panel-secondary);
   border: 2px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-3);
   text-align: left;
 }
@@ -1168,8 +1144,10 @@ img {
   padding: 0 var(--space-6);
 }
 
-/* ---------- Full / slots-full screen ---------- */
-.full-screen {
+/* ---------- Waitlist gate screen ---------- */
+/* Shown instead of the whole app once a user has ever hit "slots full" -
+   any route, any future visit - so they can't attempt to book again. */
+.waitlist-gate-screen {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1177,31 +1155,42 @@ img {
   padding: var(--space-6);
 }
 
-.full-content {
+.waitlist-gate {
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
+  max-width: 340px;
 }
 
-.full-icon {
-  font-size: 40px;
+.waitlist-gate-icon-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--color-panel-secondary), var(--color-panel-primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: var(--space-2);
 }
 
-.full-title {
+.waitlist-gate-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.waitlist-gate-title {
   font-size: var(--fs-h1);
   font-weight: var(--fw-bold);
 }
 
-.full-body {
+.waitlist-gate-body {
   color: var(--color-text-muted);
-  max-width: 320px;
 }
 
-.full-cta {
-  margin-top: var(--space-5);
+.waitlist-gate-cta {
+  margin-top: var(--space-4);
   width: 100%;
   max-width: 280px;
 }

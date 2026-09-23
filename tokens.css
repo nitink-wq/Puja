@@ -1,7 +1,7 @@
 /*
   Design tokens for the Pooja fake-door test.
   Pixel-verified against the live AstroLokal app (astro-bhagya-card.astrolokal.com)
-  via computed styles + logo asset color sampling — not guessed.
+  via computed styles + logo asset color sampling - not guessed.
   Use ONLY these tokens in styles.css. No new colors, fonts, or component styles.
 */
 
@@ -28,7 +28,7 @@
   --color-error: #D93025;
   --color-cta-text: #FFFFFF;
 
-  /* Page background gradient — exact recipe from the live app */
+  /* Page background gradient - exact recipe from the live app */
   --bg-gradient:
     radial-gradient(88% 42% at 50% 0%, rgba(255, 210, 148, 0.6) 0%, rgba(255, 210, 148, 0) 64%),
     radial-gradient(62% 34% at 98% 42%, rgba(250, 156, 112, 0.2) 0%, rgba(250, 156, 112, 0) 72%),
@@ -62,7 +62,7 @@
   --radius-bubble: 16px 16px 16px 6px;
 
   /* ---- Shadows ---- */
-  --shadow-card: 0 2px 10px rgba(53, 32, 15, 0.08);
+  --shadow-card: 0 6px 20px rgba(53, 32, 15, 0.06);
   --shadow-sticky: 0 -4px 16px rgba(53, 32, 15, 0.10);
   --shadow-cta-glow: 0 10px 22px -8px rgba(244, 87, 34, 0.6);
   --shadow-nav: 0 2px 8px rgba(53, 32, 15, 0.06);

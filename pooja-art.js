@@ -1,6 +1,6 @@
 /*
   Generated placeholder art for pooja images (list card + 3-image detail carousel).
-  Swap window.POOJA_ART[id] with real photography URLs when available — same shape,
+  Swap window.POOJA_ART[id] with real photography URLs when available - same shape,
   3 image URLs per pooja, first one is also used as the list card thumbnail.
   Built as inline SVG data URIs so no binary asset files are needed for placeholders.
 */
@@ -127,9 +127,9 @@
   });
 
   // Real photos supplied for specific poojas override the generated placeholder
-  // slides above. Add more entries here as real photography comes in — same
+  // slides above. Add more entries here as real photography comes in - same
   // shape (array of image URLs), no other code needs to change.
-  // WebP — much smaller than JPEG at equivalent quality, important for slow 3G.
+  // WebP - much smaller than JPEG at equivalent quality, important for slow 3G.
   const REAL_PHOTOS = {
     "grah-dosh-nivaran": ["assets/grah-dosh-1.webp", "assets/grah-dosh-2.webp"],
     "buri-nazar-nivaran": ["assets/buri-nazar-1.webp", "assets/buri-nazar-2.webp"],

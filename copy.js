@@ -1,5 +1,5 @@
 /*
-  All UI copy lives here. Edit strings — no UI copy should be hardcoded in app.js.
+  All UI copy lives here. Edit strings - no UI copy should be hardcoded in app.js.
   Kept in plain, simple English on purpose.
 */
 window.COPY = {
@@ -19,10 +19,9 @@ window.COPY = {
   },
 
   waitlist: {
-    title: "You're on the list!",
-    body: function (poojaName) {
-      return "All our astrologers are busy right now. We'll notify you the moment someone is free for " + poojaName + ".";
-    },
+    title: "You're on the Waitlist",
+    body: "All our astrologers are busy right now. Your booking could not be completed. We'll notify you as soon as someone is free.",
+    cta: "Back to Home",
   },
 
   detail: {
@@ -37,9 +36,9 @@ window.COPY = {
     },
     allInclusive: "all inclusive",
     bookNow: function (price) {
-      return "Book Now";
+      return "Pay Now";
     },
-    // Shared across every pooja — same 3-step flow regardless of which pooja is booked.
+    // Shared across every pooja - same 3-step flow regardless of which pooja is booked.
     howItWorks: [
       {
         title: "Book your session",
@@ -66,9 +65,4 @@ window.COPY = {
     },
   },
 
-  slotsFull: {
-    title: "All slots are full right now",
-    body: "All our astrologers are busy right now. We'll notify you the moment someone is free.",
-    cta: "Back to Home",
-  },
 };

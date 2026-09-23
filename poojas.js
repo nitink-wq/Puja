@@ -1,12 +1,12 @@
 /*
-  Pooja catalog. Max 5 poojas. Edit copy/fields here — UI code reads this directly.
-  Exactly one pooja should have `recommended: true` — it becomes the featured hero
+  Pooja catalog. Max 5 poojas. Edit copy/fields here - UI code reads this directly.
+  Exactly one pooja should have `recommended: true` - it becomes the featured hero
   card on the list page and is priced at RECOMMENDED_PRICE (see pricing.js);
   every other pooja is priced at STANDARD_PRICE regardless of order here.
-  `rating` is a placeholder number (clearly marked) — swap with a real number when
+  `rating` is a placeholder number (clearly marked) - swap with a real number when
   available. Live "devotees booked" counts are generated per-session in app.js
   (see getBookedCount), not stored here. "How It Works" is shared across all
-  poojas — see COPY.detail.howItWorks in copy.js, not per-pooja.
+  poojas - see COPY.detail.howItWorks in copy.js, not per-pooja.
 */
 window.POOJAS = [
   {
@@ -63,7 +63,7 @@ window.POOJAS = [
     tag: "Love & Unity",
     whatItDoes:
       "This pooja brings love and understanding back into your relationship. It helps when there is distance, misunderstanding, or delay in marriage.",
-    duration: "15 mins",
+    duration: "20 mins",
     mode: "Live video call",
     included: [
       "Sankalp ritual for your blessing",
@@ -72,6 +72,8 @@ window.POOJAS = [
       "Video recording sent to you",
     ],
     rating: 4.6,
+    recommended: true,
+    // our most-booked pooja - featured hero card on the list page
   },
   {
     id: "kaal-sarp-dosh-nivaran",
@@ -79,7 +81,7 @@ window.POOJAS = [
     tag: "Rahu-Ketu Relief",
     whatItDoes:
       "This pooja reduces the effect of Kaal Sarp Dosh in your kundli. It helps when you face sudden problems or don't get results even after working hard.",
-    duration: "20 mins",
+    duration: "15 mins",
     mode: "Live video call",
     included: [
       "Sankalp ritual for your blessing",
@@ -88,7 +90,5 @@ window.POOJAS = [
       "Video recording sent to you",
     ],
     rating: 4.9,
-    recommended: true,
-    // placeholder for our top-selling pooja — swap fields above when finalized
   },
 ];

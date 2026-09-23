@@ -1,34 +1,32 @@
 /*
   URL param parsing + analytics tracking wrapper.
-  Provider is swappable in one place: CONFIG.ANALYTICS_PROVIDER.
+  Provider is swappable in one place: CONFIG.ANALYTICS_PROVIDER. Every event
+  also fire-and-forget POSTs to our own /api/events for DB capture,
+  regardless of provider - see server.js.
 */
 (function () {
   function parseParams() {
     const usp = new URLSearchParams(window.location.search);
-    const rawBand = usp.get("ltv_band");
-    const bandMissing = !rawBand || window.CONFIG.VALID_LTV_BANDS.indexOf(rawBand) === -1;
-    const ltv_band = bandMissing ? window.CONFIG.DEFAULT_LTV_BAND : rawBand;
 
-    const price_variant = usp.get("price_variant") || window.CONFIG.DEFAULT_PRICE_VARIANT;
+    // Pass through untouched - never decode/transform.
+    const user_id = usp.has("user_id") ? usp.get("user_id") : "";
+    const recharge_count = usp.has("recharge_count") ? usp.get("recharge_count") : "";
 
-    // Pass through untouched — never decode/transform.
-    const user_token = usp.has("user_token") ? usp.get("user_token") : "";
+    const rawVariant = (usp.get("variant") || "").toLowerCase();
+    const variantMissing = rawVariant !== "a" && rawVariant !== "b";
+    const variant = rawVariant === "b" ? "b" : "a"; // defaults to "a" when missing/invalid
 
-    const home_deeplink = usp.get("home_deeplink") || window.CONFIG.HOME_DEEPLINK;
-    const homeDeeplinkMissing = !usp.get("home_deeplink");
-
-    return { ltv_band, price_variant, user_token, home_deeplink, bandMissing, homeDeeplinkMissing };
+    return { user_id, recharge_count, variant, variantMissing };
   }
 
   window.PARAMS = parseParams();
 
-  if (window.PARAMS.homeDeeplinkMissing) {
-    console.warn(
-      "[fakedoor] home_deeplink param missing — falling back to CONFIG.HOME_DEEPLINK (" +
-        window.CONFIG.HOME_DEEPLINK +
-        "). Fill in the real deeplink in config.js."
-    );
-  }
+  // Page taxonomy for event tagging - L1/L2/L3 per Nitin's naming.
+  window.PAGES = {
+    LIST: { code: "L1", name: "Listing Page" },
+    DETAIL: { code: "L2", name: "Detail Page" },
+    WAITLIST: { code: "L3", name: "Waiting Page" },
+  };
 
   const PROVIDERS = {
     posthog: function (name, props) {
@@ -40,15 +38,32 @@
     },
   };
 
-  window.track = function track(name, props) {
+  // Fire-and-forget DB capture. Fails silently (e.g. local static-file dev
+  // server with no /api/events route, or no DATABASE_URL configured yet) -
+  // analytics must never block or break the UI.
+  function sendToEventsApi(name, props) {
+    try {
+      fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_name: name, props: props }),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (e) {
+      /* fetch unavailable - DB capture silently skipped */
+    }
+  }
+
+  window.track = function track(name, props, page) {
     const p = window.PARAMS;
     const merged = Object.assign(
       {
-        user_token: p.user_token,
-        ltv_band: p.ltv_band,
-        price_variant: p.price_variant,
+        user_id: p.user_id,
+        recharge_count: p.recharge_count,
+        variant: p.variant,
         timestamp: new Date().toISOString(),
       },
+      page ? { page: page.code, page_name: page.name } : {},
       props || {}
     );
     const provider = PROVIDERS[window.CONFIG.ANALYTICS_PROVIDER];
@@ -57,6 +72,7 @@
     } else {
       console.warn("[fakedoor] unknown analytics provider:", window.CONFIG.ANALYTICS_PROVIDER);
     }
+    sendToEventsApi(name, merged);
   };
 
   // Dedupe *_view events so a refresh or back/forward nav doesn't double-count a view
@@ -75,19 +91,19 @@
     try {
       sessionStorage.setItem(VIEWED_STORAGE_KEY, JSON.stringify(Array.from(set)));
     } catch (e) {
-      /* sessionStorage unavailable — dedupe silently disabled */
+      /* sessionStorage unavailable - dedupe silently disabled */
     }
   }
 
-  window.trackViewOnce = function trackViewOnce(dedupeKey, name, props) {
+  window.trackViewOnce = function trackViewOnce(dedupeKey, name, props, page) {
     const set = getViewedSet();
     if (set.has(dedupeKey)) return;
     set.add(dedupeKey);
     saveViewedSet(set);
-    window.track(name, props);
+    window.track(name, props, page);
   };
 
-  if (window.PARAMS.bandMissing) {
-    window.track("ltv_band_missing", {});
+  if (window.PARAMS.variantMissing) {
+    window.track("variant_missing", {}, window.PAGES.LIST);
   }
 })();

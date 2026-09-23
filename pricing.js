@@ -1,27 +1,55 @@
 /*
-  Flat pricing: the recommended (top) pooja is priced differently from the rest.
-  Per Nitin's instruction this replaced the earlier ltv_band-driven price ladder —
-  price no longer varies by `ltv_band`. The `ltv_band`/`price_variant` URL params
-  are still parsed and still attached to every analytics event (see analytics.js),
-  so that dimension is still available for analysis even though it no longer
-  changes what price is shown. To bring back per-band pricing later, reintroduce
-  a lookup keyed on window.PARAMS.ltv_band here — no other file needs to change.
+  Real pricing driven by the `variant` URL param (a or b) - see Nitin's spec.
+  Every pooja has its own explicit price per variant (PRICE_TABLE). The MRP
+  (compare-at) shown with a strikethrough is derived from that price using a
+  fixed discount % per pooja tier - same 50%/51% split as the original flat
+  pricing model, so the actual displayed price never changes, only what's
+  shown alongside it. This keeps the MRP/discount consistent per Nitin's
+  request ("keep the discount % same, write the MRP") rather than us
+  inventing an unrelated MRP number.
 */
-window.RECOMMENDED_PRICE = 750;
-window.RECOMMENDED_COMPARE_AT = 1500; // 50% off
-window.STANDARD_PRICE = 500;
-window.STANDARD_COMPARE_AT = 1020; // 51% off
+window.PRICE_TABLE = {
+  a: {
+    "grah-dosh-nivaran": 500,
+    "buri-nazar-nivaran": 500,
+    "navgrah-shanti": 500,
+    "kaal-sarp-dosh-nivaran": 500,
+    "prem-milan": 750,
+  },
+  b: {
+    "grah-dosh-nivaran": 1500,
+    "buri-nazar-nivaran": 1500,
+    "navgrah-shanti": 1500,
+    "kaal-sarp-dosh-nivaran": 1500,
+    "prem-milan": 2100,
+  },
+};
+window.DEFAULT_VARIANT = "a";
 
-window.getPrice = function getPrice(pooja) {
-  return pooja && pooja.recommended ? window.RECOMMENDED_PRICE : window.STANDARD_PRICE;
+// Same split as the original flat-pricing model: the featured/recommended
+// pooja is 50% off, every other pooja is 51% off - regardless of variant.
+window.DISCOUNT_PERCENT = {
+  recommended: 50,
+  standard: 51,
 };
 
-window.getCompareAtPrice = function getCompareAtPrice(pooja) {
-  return pooja && pooja.recommended ? window.RECOMMENDED_COMPARE_AT : window.STANDARD_COMPARE_AT;
+window.getVariant = function getVariant() {
+  var v = window.PARAMS && window.PARAMS.variant;
+  return v === "b" ? "b" : window.DEFAULT_VARIANT;
+};
+
+window.getPrice = function getPrice(pooja) {
+  if (!pooja) return 0;
+  var table = window.PRICE_TABLE[window.getVariant()];
+  return table && table[pooja.id] != null ? table[pooja.id] : 0;
 };
 
 window.getDiscountPercent = function getDiscountPercent(pooja) {
-  const price = window.getPrice(pooja);
-  const compareAt = window.getCompareAtPrice(pooja);
-  return Math.round(100 - (100 * price) / compareAt);
+  return pooja && pooja.recommended ? window.DISCOUNT_PERCENT.recommended : window.DISCOUNT_PERCENT.standard;
+};
+
+window.getCompareAtPrice = function getCompareAtPrice(pooja) {
+  var price = window.getPrice(pooja);
+  var discount = window.getDiscountPercent(pooja);
+  return Math.round(price / (1 - discount / 100));
 };

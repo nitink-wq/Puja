@@ -1,9 +1,40 @@
 /*
   Router + screen rendering for the pooja fake-door test.
-  Routes: #/list, #/pooja/:id, #/full/:id
+  Routes: #/list, #/pooja/:id. Once a user has ever hit "slots full", every
+  route (any hash) is intercepted and shows the persistent waitlist gate
+  instead - see renderWaitlistGate / getWaitlistRecord.
 */
 (function () {
   const root = document.getElementById("app");
+
+  // This page loads inside a React Native WebView in the AstroLokal app.
+  // Firing the deeplink from inside the WebView stacks a NEW Home screen on
+  // top of this one, so hardware back just returns here instead of actually
+  // leaving - same bug bhagya-score hit. Fix: always try the postMessage
+  // bridge first (native pops this WebView screen directly); the deeplink
+  // below is a fallback ONLY for when the page is opened outside the app
+  // (plain browser, no bridge) - never the primary path when the bridge
+  // exists.
+  const DEEPLINK_SCHEME = "astrolokal://BottomTabs?screen=Home";
+
+  function sendBackAction() {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ action: "GO_BACK" }));
+      return true;
+    }
+    return false;
+  }
+
+  // Shared "exit to app" path for both the header back button (when it's
+  // pointed at home) and the waitlist gate's "Back to Home" CTA. `source`
+  // is appended for native-side debugging/analytics, matching bhagya-score.
+  function exitToHome(source) {
+    if (sendBackAction()) return;
+    const params = new URLSearchParams();
+    params.set("source", source);
+    if (window.PARAMS && window.PARAMS.user_id) params.set("user_id", window.PARAMS.user_id);
+    window.location.href = DEEPLINK_SCHEME + "&" + params.toString();
+  }
 
   function getPooja(id) {
     return window.POOJAS.find(function (p) {
@@ -77,7 +108,7 @@
       .join("");
   }
 
-  // Once a user reaches "slots full" for any pooja, remember it (per user_token,
+  // Once a user reaches "slots full" for any pooja, remember it (per user_id,
   // client-side only) so a return visit shows a waitlist notice instead of
   // inviting them to try booking again.
   var WAITLIST_KEY = "pooja_fakedoor_waitlist_v1";
@@ -87,14 +118,14 @@
       localStorage.setItem(
         WAITLIST_KEY,
         JSON.stringify({
-          userToken: window.PARAMS.user_token,
+          userId: window.PARAMS.user_id,
           poojaId: pooja.id,
           poojaName: pooja.name,
           submittedAt: new Date().toISOString(),
         })
       );
     } catch (e) {
-      /* localStorage unavailable — waitlist banner silently skipped */
+      /* localStorage unavailable - waitlist banner silently skipped */
     }
   }
 
@@ -103,7 +134,7 @@
       var raw = localStorage.getItem(WAITLIST_KEY);
       if (!raw) return null;
       var record = JSON.parse(raw);
-      if (record && record.userToken === window.PARAMS.user_token) return record;
+      if (record && record.userId === window.PARAMS.user_id) return record;
       return null;
     } catch (e) {
       return null;
@@ -112,10 +143,6 @@
 
   function priceFor(pooja) {
     return window.getPrice(pooja);
-  }
-
-  function compareAtFor(pooja) {
-    return window.getCompareAtPrice(pooja);
   }
 
   function backChevronSvg() {
@@ -166,13 +193,14 @@
     );
   }
 
-  function bindHeaderBack() {
+  function bindHeaderBack(page) {
     const btn = root.querySelector(".back-btn");
     if (!btn) return;
     btn.addEventListener("click", function () {
       const action = btn.getAttribute("data-back-action");
+      window.track("back_click", { back_action: action }, page);
       if (action === "home") {
-        window.location.href = window.PARAMS.home_deeplink;
+        exitToHome((page ? page.code : "unknown") + "_back");
       } else {
         go("#/list");
       }
@@ -280,22 +308,9 @@
       })
       .join("");
 
-    const waitlistRecord = getWaitlistRecord();
-    const waitlistCopy = window.COPY.waitlist;
-    const waitlistHtml = waitlistRecord
-      ? '<div class="waitlist-banner">' +
-        '<span class="waitlist-banner-icon" aria-hidden="true">&#9200;</span>' +
-        '<div>' +
-        '<div class="waitlist-banner-title">' + waitlistCopy.title + "</div>" +
-        '<div class="waitlist-banner-body">' + waitlistCopy.body(waitlistRecord.poojaName) + "</div>" +
-        "</div>" +
-        "</div>"
-      : "";
-
     root.innerHTML =
       headerHtml({ backAction: "home" }) +
       '<main class="screen list-screen">' +
-      waitlistHtml +
       '<div class="list-hero">' +
       '<h1 class="list-title">' + listCopy.header + "</h1>" +
       '<p class="trust-line">' + listCopy.trustLine + "</p>" +
@@ -305,23 +320,22 @@
       '<div class="trust-pillars">' + trustPillarsHtml + "</div>" +
       "</main>";
 
-    bindHeaderBack();
+    bindHeaderBack(window.PAGES.LIST);
 
     root.querySelectorAll(".pooja-card").forEach(function (el) {
       el.addEventListener("click", function () {
-        window.track("pooja_card_click", {
-          pooja_id: el.getAttribute("data-pooja-id"),
-          price: Number(el.getAttribute("data-price")),
-        });
+        window.track(
+          "pooja_card_click",
+          {
+            pooja_id: el.getAttribute("data-pooja-id"),
+            price: Number(el.getAttribute("data-price")),
+          },
+          window.PAGES.LIST
+        );
       });
     });
 
-    window.trackViewOnce("list_view", "list_view", {});
-    if (waitlistRecord) {
-      window.trackViewOnce("waitlist_banner_view", "waitlist_banner_view", {
-        pooja_id: waitlistRecord.poojaId,
-      });
-    }
+    window.trackViewOnce("list_view", "list_view", {}, window.PAGES.LIST);
   }
 
   function carouselHtml(images) {
@@ -382,7 +396,7 @@
       if (slideCount <= 1) return;
       autoplayTimer = setInterval(function () {
         goToSlide(index + 1);
-      }, 4000);
+      }, 2000);
     }
 
     track.addEventListener("scroll", function () {
@@ -422,7 +436,7 @@
       return;
     }
     const price = priceFor(pooja);
-    const compareAt = compareAtFor(pooja);
+    const compareAt = window.getCompareAtPrice(pooja);
     const discount = window.getDiscountPercent(pooja);
     const astros = window.getAstrosForPooja(pooja.id);
     let selectedAstro = astros[0];
@@ -497,7 +511,7 @@
       '<button type="button" class="btn-primary bottom-sheet-cta" id="astro-confirm-btn">Confirm Astrologer</button>' +
       "</div>";
 
-    bindHeaderBack();
+    bindHeaderBack(window.PAGES.DETAIL);
     bindCarousel();
 
     let pendingAstro = selectedAstro;
@@ -518,7 +532,10 @@
       astroSheetBackdrop.classList.remove("is-open");
     }
 
-    document.getElementById("astro-change-btn").addEventListener("click", openAstroSheet);
+    document.getElementById("astro-change-btn").addEventListener("click", function () {
+      window.track("astro_change_click", { pooja_id: pooja.id }, window.PAGES.DETAIL);
+      openAstroSheet();
+    });
 
     astroSheetBackdrop.addEventListener("click", closeAstroSheet);
 
@@ -534,18 +551,25 @@
     astroConfirmBtn.addEventListener("click", function () {
       selectedAstro = pendingAstro;
       document.getElementById("astro-card").innerHTML = astroCardHtml(selectedAstro);
+      window.track(
+        "astro_confirm_click",
+        { pooja_id: pooja.id, astro_id: selectedAstro.id, astro_name: selectedAstro.name },
+        window.PAGES.DETAIL
+      );
       closeAstroSheet();
     });
 
     document.getElementById("pay-now-btn").addEventListener("click", function () {
-      window.track("pay_now_click", { pooja_id: pooja.id, price: price });
+      window.track("pay_now_click", { pooja_id: pooja.id, price: price }, window.PAGES.DETAIL);
       showLoaderThenFull(pooja, price, selectedAstro.name);
     });
 
-    window.trackViewOnce("pooja_detail_view_" + pooja.id, "pooja_detail_view", {
-      pooja_id: pooja.id,
-      price: price,
-    });
+    window.trackViewOnce(
+      "pooja_detail_view_" + pooja.id,
+      "pooja_detail_view",
+      { pooja_id: pooja.id, price: price },
+      window.PAGES.DETAIL
+    );
   }
 
   function showLoaderThenFull(pooja, price, astroName) {
@@ -571,43 +595,42 @@
 
     setTimeout(function () {
       clearInterval(msgTimer);
-      go("#/full/" + pooja.id, { replace: true });
+      go("#/waitlist", { replace: true });
     }, window.CONFIG.LOADER_DURATION_MS);
   }
 
-  function renderFull(id) {
-    const pooja = getPooja(id);
-    if (!pooja) {
-      go("#/list", { replace: true });
-      return;
-    }
-    const price = priceFor(pooja);
-    const copy = window.COPY.slotsFull;
+  // Persistent gate: once a user has ever hit "slots full" for any pooja,
+  // every visit - this session or a future one, any route - shows this
+  // screen instead of the app. They can leave, but they can't book again.
+  function renderWaitlistGate(record) {
+    const waitlistCopy = window.COPY.waitlist;
 
     document.querySelectorAll(".loader-overlay").forEach(function (el) { el.remove(); });
 
     root.innerHTML =
       headerHtml({ backAction: "home" }) +
-      '<main class="screen full-screen">' +
-      '<div class="full-content">' +
-      '<div class="full-icon" aria-hidden="true">&#9203;</div>' +
-      '<h1 class="full-title">' + copy.title + "</h1>" +
-      '<p class="full-body">' + copy.body + "</p>" +
-      '<button class="btn-primary full-cta" id="back-home-btn">' + copy.cta + "</button>" +
+      '<main class="screen waitlist-gate-screen">' +
+      '<div class="waitlist-gate">' +
+      '<div class="waitlist-gate-icon-wrap"><span class="waitlist-gate-icon" aria-hidden="true">&#9203;</span></div>' +
+      '<h1 class="waitlist-gate-title">' + waitlistCopy.title + "</h1>" +
+      '<p class="waitlist-gate-body">' + waitlistCopy.body + "</p>" +
+      '<button class="btn-primary waitlist-gate-cta" id="back-home-btn">' + waitlistCopy.cta + "</button>" +
       "</div>" +
       "</main>";
 
-    bindHeaderBack();
+    bindHeaderBack(window.PAGES.WAITLIST);
 
     document.getElementById("back-home-btn").addEventListener("click", function () {
-      window.track("back_home_click", { pooja_id: pooja.id, price: price });
-      window.location.href = window.PARAMS.home_deeplink;
+      window.track("back_home_click", { pooja_id: record.poojaId }, window.PAGES.WAITLIST);
+      exitToHome(window.PAGES.WAITLIST.code + "_cta");
     });
 
-    window.trackViewOnce("slots_full_view_" + pooja.id, "slots_full_view", {
-      pooja_id: pooja.id,
-      price: price,
-    });
+    window.trackViewOnce(
+      "waitlist_gate_view",
+      "waitlist_gate_view",
+      { pooja_id: record.poojaId },
+      window.PAGES.WAITLIST
+    );
   }
 
   function parseRoute() {
@@ -615,11 +638,8 @@
     if (!hash || hash === "#/" || hash === "#/list") {
       return { screen: "list" };
     }
-    let m = hash.match(/^#\/pooja\/([^/]+)$/);
+    const m = hash.match(/^#\/pooja\/([^/]+)$/);
     if (m) return { screen: "detail", id: decodeURIComponent(m[1]) };
-
-    m = hash.match(/^#\/full\/([^/]+)$/);
-    if (m) return { screen: "full", id: decodeURIComponent(m[1]) };
 
     return { screen: "list" };
   }
@@ -637,10 +657,17 @@
 
   function render() {
     document.querySelectorAll(".loader-overlay").forEach(function (el) { el.remove(); });
+
+    const waitlistRecord = getWaitlistRecord();
+    if (waitlistRecord) {
+      renderWaitlistGate(waitlistRecord);
+      window.scrollTo(0, 0);
+      return;
+    }
+
     const route = parseRoute();
     if (route.screen === "list") renderList();
     else if (route.screen === "detail") renderDetail(route.id);
-    else if (route.screen === "full") renderFull(route.id);
     window.scrollTo(0, 0);
   }
 
