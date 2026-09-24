@@ -531,6 +531,13 @@ img {
   object-fit: fill;
 }
 
+/* Main ritual shot (slide 1 only) doesn't have edge labels like the item
+   shot does, so cover (crop/zoom to fill, no stretch) looks better than
+   fill here - the item shot below keeps object-fit: fill untouched. */
+.carousel-slide-main img {
+  object-fit: cover;
+}
+
 .carousel::after {
   content: "";
   position: absolute;

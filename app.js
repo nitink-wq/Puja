@@ -342,7 +342,8 @@
     const slides = images
       .map(function (src, i) {
         const loadAttrs = i === 0 ? 'fetchpriority="high"' : 'loading="lazy"';
-        return '<div class="carousel-slide"><img src="' + src + '" alt="" width="720" height="540" ' + loadAttrs + " /></div>";
+        const slideClass = i === 0 ? "carousel-slide carousel-slide-main" : "carousel-slide";
+        return '<div class="' + slideClass + '"><img src="' + src + '" alt="" width="720" height="540" ' + loadAttrs + " /></div>";
       })
       .join("");
     const dots = images
