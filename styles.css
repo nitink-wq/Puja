@@ -536,6 +536,9 @@ img {
    fill here - the item shot below keeps object-fit: fill untouched. */
 .carousel-slide-main img {
   object-fit: cover;
+  /* Bias toward the top so the priest's head/hands aren't cropped out -
+     same reasoning as the hero card image on the List page. */
+  object-position: 50% 12%;
 }
 
 .carousel::after {
