@@ -2,7 +2,10 @@
   Router + screen rendering for the pooja fake-door test.
   Routes: #/list, #/pooja/:id. Once a user has ever hit "slots full", every
   route (any hash) is intercepted and shows the persistent waitlist gate
-  instead - see renderWaitlistGate / getWaitlistRecord.
+  instead - see renderWaitlistGate / fetchWaitlistState / server.js. The
+  gate is checked server-side (Postgres `waitlist` table) on every page
+  load, not client localStorage, so clearing browser storage can't unlock
+  a gated user_id.
 */
 (function () {
   const root = document.getElementById("app");
@@ -108,37 +111,51 @@
       .join("");
   }
 
-  // Once a user reaches "slots full" for any pooja, remember it (per user_id,
-  // client-side only) so a return visit shows a waitlist notice instead of
-  // inviting them to try booking again.
-  var WAITLIST_KEY = "pooja_fakedoor_waitlist_v1";
+  // Once a user reaches "slots full" for any pooja, remember it server-side
+  // (Postgres `waitlist` table, see server.js) keyed by user_id, so a return
+  // visit - from ANY browser/device, even after clearing local storage -
+  // shows the waitlist gate instead of letting them book again. This is
+  // deliberately NOT client-side state: a user clearing their own browser
+  // storage must not be able to unlock themselves.
+  var waitlistState = { record: null };
+
+  function fetchWaitlistState() {
+    if (!window.PARAMS.user_id) return Promise.resolve(null);
+    return fetch("/api/waitlist?user_id=" + encodeURIComponent(window.PARAMS.user_id))
+      .then(function (res) {
+        return res.ok ? res.json() : null;
+      })
+      .then(function (data) {
+        return data && data.onWaitlist
+          ? { poojaId: data.poojaId, poojaName: data.poojaName }
+          : null;
+      })
+      .catch(function () {
+        // API unreachable (e.g. static-file-only local dev with no backend) -
+        // fail open so local testing without `node server.js` still works.
+        return null;
+      });
+  }
 
   function saveWaitlistRecord(pooja) {
+    // Optimistic: block immediately in this tab without waiting on the
+    // round trip. The POST below is what actually makes it authoritative
+    // for future visits/devices.
+    waitlistState.record = { poojaId: pooja.id, poojaName: pooja.name };
     try {
-      localStorage.setItem(
-        WAITLIST_KEY,
-        JSON.stringify({
-          userId: window.PARAMS.user_id,
-          poojaId: pooja.id,
-          poojaName: pooja.name,
-          submittedAt: new Date().toISOString(),
-        })
-      );
+      fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: window.PARAMS.user_id, pooja_id: pooja.id, pooja_name: pooja.name }),
+        keepalive: true,
+      }).catch(function () {});
     } catch (e) {
-      /* localStorage unavailable - waitlist banner silently skipped */
+      /* fetch unavailable - server-side record silently skipped */
     }
   }
 
   function getWaitlistRecord() {
-    try {
-      var raw = localStorage.getItem(WAITLIST_KEY);
-      if (!raw) return null;
-      var record = JSON.parse(raw);
-      if (record && record.userId === window.PARAMS.user_id) return record;
-      return null;
-    } catch (e) {
-      return null;
-    }
+    return waitlistState.record;
   }
 
   function priceFor(pooja) {
@@ -678,6 +695,12 @@
     if (!window.location.hash) {
       history.replaceState(null, "", "#/list");
     }
-    render();
+    // Check the server for an existing waitlist record before the very
+    // first render, so a returning user (any device, cleared storage or
+    // not) can't slip into List/Detail even for a frame.
+    fetchWaitlistState().then(function (record) {
+      waitlistState.record = record;
+      render();
+    });
   });
 })();

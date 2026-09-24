@@ -12,22 +12,24 @@ gate below.
 
 ## Run locally
 
-Frontend only (no event capture, no DB - events just log to console via the
-provider fallback):
+Frontend only (no event capture, no DB, **no waitlist gate** - it fails open
+without a backend, see Waitlist gate below):
 ```
 cd pooja-fakedoor
 python3 -m http.server 8123
 ```
 Open `http://localhost:8123/?user_id=demo123&variant=a`.
 
-Full stack, including the event-capture API (`node` + `pg` required):
+Full stack, including the event-capture and waitlist-gate APIs (`node` + `pg` required):
 ```
 cd pooja-fakedoor
 npm install
 DATABASE_URL=postgres://... node server.js
 ```
-Without `DATABASE_URL` set, `node server.js` still runs fine - POST
-`/api/events` just logs to console instead of writing to Postgres.
+Without `DATABASE_URL` set, `node server.js` still runs fine - events log to
+console instead of writing to Postgres, and the waitlist gate uses an
+in-process `Map` instead of the `waitlist` table (still server-side, just
+resets whenever the server restarts).
 
 ## URL params
 
@@ -74,12 +76,31 @@ is now looked up per-pooja-id, not per-recommended-flag.
 The goal: once someone has tried to book and hit "slots full," don't let them
 attempt to book again - this test measures intent, not repeat clicks.
 
-- The moment the Pay Now loader finishes, a record `{userId, poojaId, poojaName, submittedAt}` is saved to `localStorage` (`pooja_fakedoor_waitlist_v1`), and the waitlist screen shows immediately.
-- From then on, **every route** - `#/list`, `#/pooja/:id`, a fresh page load, any future visit - is intercepted by `render()` in `app.js` before the normal router even runs, and shows the same waitlist screen instead. There is no way back into the List or Detail screens for that `user_id` once the record exists.
-- Different `user_id` values are fully isolated from each other (verified in-browser - switching the id restores normal access).
-- The gate itself is client-side only (`localStorage`), so it only persists on the same device/browser regardless of the DB event capture below. Clear it during testing with `localStorage.removeItem('pooja_fakedoor_waitlist_v1')` in devtools.
+**This is server-side, not client `localStorage`** - deliberately, so a user
+can't unlock themselves by clearing browser storage or switching devices:
+
+- The moment the Pay Now loader finishes, `app.js` POSTs `{user_id, pooja_id, pooja_name}` to `/api/waitlist`, which upserts a row into the Postgres `waitlist` table (`server.js`) keyed by `user_id` (`PRIMARY KEY`, so one record per user, first submission wins).
+- On every page load, `app.js` does `GET /api/waitlist?user_id=...` **before the first render** and caches the result in memory for that page load. If it comes back `onWaitlist: true`, every route - `#/list`, `#/pooja/:id`, any hash - shows the waitlist screen instead of the normal router. There is no way back into List or Detail for that `user_id` from any device or browser once the row exists.
+- Without `DATABASE_URL` set (local dev without a real DB), the same logic runs against an in-process `Map` in `server.js` instead of Postgres - still server-side, just doesn't survive a server restart.
+- Without a backend at all (e.g. testing via the plain Python static server, `_devserver.py`), the `GET`/`POST` calls fail and `app.js` **fails open** (treats it as "not on the waitlist") so local frontend-only testing doesn't hard-break - but this means the gate itself can't be demoed without running `node server.js`.
+- Different `user_id` values are fully isolated from each other.
 - Fires a `waitlist_gate_view` event (deduped once per browser session, same as other `*_view` events) - see Events below.
 - "Back to Home" on the waitlist screen still works (leaves the app entirely - see "Exiting back to the app" below).
+
+**Resetting it for a specific user** (e.g. to retest): delete their row from
+the DB - `DELETE FROM waitlist WHERE user_id = 'USER_ID_HERE';` - via the
+Devtron pod terminal using `node` + `pg` (no `psql` in the `node:24-alpine`
+image):
+```
+node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.PGSSL === 'require' ? { rejectUnauthorized: false } : false });
+pool.query('DELETE FROM waitlist WHERE user_id = \$1', ['USER_ID_HERE'])
+  .then((r) => { console.log('deleted rows:', r.rowCount); process.exit(0); })
+  .catch((e) => { console.error(e); process.exit(1); });
+"
+```
+Or just use a fresh, never-used `user_id` - simpler for most retesting.
 
 ## Exiting back to the app (React Native WebView)
 
@@ -149,6 +170,7 @@ Every event captured by `window.track()` fire-and-forget POSTs to our own
 - Without `DATABASE_URL` set, the endpoint still returns 200 but just `console.info`s the event instead of writing a row - so local dev and the static-file preview server never break, they just don't persist anything.
 - **To get real data flowing, `pooja-fakedoor` needs a `DATABASE_URL` secret in Devtron** - this is a change from the original deployment (which genuinely had no backend/DB). Follow the same DB-creation request you'd send C2S for any other app: `db_name`/`username` = `pooja_fakedoor` (or your project's naming convention), then wire the resulting connection string into a Devtron Secret and `envFrom` it into the workload, same pattern as `bhagya-card`.
 - Once deployed with a real `DATABASE_URL` and getting traffic, pull the event sheet any time with `GET /api/events/export` - it streams a CSV (`id, user_id, event_name, page, page_name, recharge_count, variant, props, created_at`) you can open directly in Sheets/Excel. There's no data to export yet since this hasn't been deployed with a DB - I can't fabricate real captured events.
+- The same Postgres instance also has a separate `waitlist` table (one row per gated `user_id`) - see "Waitlist gate" above for its schema and how to reset a specific user.
 
 ## Events tracked
 
@@ -190,13 +212,15 @@ side falls back to `console.info` logging - the DB-capture POST to
 
 ## Testing done
 
-Verified locally in 375×812 mobile viewport (frontend only - `node`/`pg`
-aren't available in this dev sandbox, so the `/api/events` DB write path
-itself is unverified pending a real Devtron deploy with `DATABASE_URL` set):
-- Both pricing variants (`?variant=a` / `?variant=b`) show the correct price per pooja on List and Detail, no discount badge shown.
-- Carousel images (both main and item/samagri shots) display uncropped, letterboxed on `--color-card` where the aspect ratio doesn't match.
+Verified locally in 375×812 mobile viewport. `node`/`npm`/`pg` aren't
+available in this dev sandbox, so anything that requires actually running
+`server.js` (the Postgres-backed event capture and waitlist-gate writes/reads)
+is code-reviewed carefully but **unverified pending a real Devtron deploy**
+with `DATABASE_URL` set - test the full gate flow there before trusting it:
+- Both pricing variants (`?variant=a` / `?variant=b`) show the correct price + MRP + discount % per pooja on List and Detail.
+- Carousel: main shot (slide 1) is cropped/zoomed (`cover`, biased toward the top), item/samagri shot (slide 2) stretches to fill width (`fill`) - neither is cropped in a way that cuts off content, confirmed on both.
 - No horizontal scroll.
 - Full booking flow: List → Detail → Pay Now → loader → waitlist gate.
-- Once the waitlist record exists, every route (list, detail, fresh load) shows the gate - confirmed booking is fully blocked, not just banner-nudged.
-- Different `user_id` values are isolated (verified by switching ids).
+- Against the plain Python static server (no backend), `GET`/`POST /api/waitlist` fail as expected (404/501) and the app fails open (no gate) with zero console errors - confirms the frontend degrades safely without a backend, but does NOT confirm the gate itself works.
+- Back-button routing verified: L1 back → exits to home (WebView bridge or deeplink fallback), L2 back → `#/list` (not home), L3 back → exits to home.
 - All images (webp) load with 200 OK, no broken references; no console errors anywhere.

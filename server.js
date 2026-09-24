@@ -1,14 +1,18 @@
 /*
-  Static file server for the pooja fake-door site, plus a minimal event-
-  capture API (POST /api/events, GET /api/events/export) backed by Postgres
-  when DATABASE_URL is set. Without DATABASE_URL (e.g. local dev via
-  _devserver.py, or this file run without the env var), event capture just
-  logs to console instead of failing - the UI must never break because of
-  analytics.
+  Static file server for the pooja fake-door site, plus:
+  - a minimal event-capture API (POST /api/events, GET /api/events/export)
+  - the waitlist gate API (POST /api/waitlist, GET /api/waitlist?user_id=)
+  Both are backed by Postgres when DATABASE_URL is set. Without it (e.g.
+  local dev via _devserver.py, or this file run without the env var), event
+  capture logs to console and the waitlist gate uses an in-process Map - the
+  UI must never break because analytics/DB access isn't configured, but the
+  waitlist gate is deliberately server-side either way (never client
+  localStorage) so it can't be bypassed by clearing browser storage.
 */
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { URL } = require("url");
 
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
@@ -64,6 +68,121 @@ function ensureEventsTable() {
 ensureEventsTable().catch(function (err) {
   console.error("[events] failed to ensure events table:", err.message);
 });
+
+// ---------- Waitlist gate (Postgres, with in-memory fallback) ----------
+
+// Used only when DATABASE_URL isn't set - keeps the gate server-side (not
+// client localStorage) even in that case, it just won't survive a restart.
+const waitlistMemory = new Map();
+
+function ensureWaitlistTable() {
+  const p = getPool();
+  if (!p) return Promise.resolve();
+  return p.query(
+    "CREATE TABLE IF NOT EXISTS waitlist (" +
+      "user_id TEXT PRIMARY KEY, " +
+      "pooja_id TEXT, " +
+      "pooja_name TEXT, " +
+      "created_at TIMESTAMPTZ NOT NULL DEFAULT now()" +
+      ")"
+  );
+}
+
+ensureWaitlistTable().catch(function (err) {
+  console.error("[waitlist] failed to ensure waitlist table:", err.message);
+});
+
+function handleWaitlistGet(req, res, userId) {
+  if (!userId) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ onWaitlist: false }));
+    return;
+  }
+
+  const p = getPool();
+  if (!p) {
+    const record = waitlistMemory.get(userId);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      record
+        ? JSON.stringify({ onWaitlist: true, poojaId: record.poojaId, poojaName: record.poojaName })
+        : JSON.stringify({ onWaitlist: false })
+    );
+    return;
+  }
+
+  p.query("SELECT pooja_id, pooja_name FROM waitlist WHERE user_id = $1", [userId])
+    .then(function (result) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (result.rows.length) {
+        res.end(
+          JSON.stringify({ onWaitlist: true, poojaId: result.rows[0].pooja_id, poojaName: result.rows[0].pooja_name })
+        );
+      } else {
+        res.end(JSON.stringify({ onWaitlist: false }));
+      }
+    })
+    .catch(function (err) {
+      console.error("[waitlist] lookup failed:", err.message);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "lookup failed" }));
+    });
+}
+
+function handleWaitlistPost(req, res) {
+  let body = "";
+  req.on("data", function (chunk) {
+    body += chunk;
+    if (body.length > 1e6) req.destroy();
+  });
+  req.on("end", function () {
+    let payload;
+    try {
+      payload = JSON.parse(body || "{}");
+    } catch (e) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid JSON" }));
+      return;
+    }
+
+    const userId = payload.user_id != null ? String(payload.user_id) : "";
+    const poojaId = payload.pooja_id != null ? String(payload.pooja_id) : "";
+    const poojaName = payload.pooja_name != null ? String(payload.pooja_name) : "";
+
+    if (!userId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "user_id required" }));
+      return;
+    }
+
+    const p = getPool();
+    if (!p) {
+      // First submission wins - once gated, the frontend never sends
+      // another POST for this user anyway, but stay idempotent either way.
+      if (!waitlistMemory.has(userId)) {
+        waitlistMemory.set(userId, { poojaId: poojaId, poojaName: poojaName });
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, stored: false }));
+      return;
+    }
+
+    p.query(
+      "INSERT INTO waitlist (user_id, pooja_id, pooja_name) VALUES ($1, $2, $3) " +
+        "ON CONFLICT (user_id) DO NOTHING",
+      [userId, poojaId, poojaName]
+    )
+      .then(function () {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, stored: true }));
+      })
+      .catch(function (err) {
+        console.error("[waitlist] insert failed:", err.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "insert failed" }));
+      });
+  });
+}
 
 function handleEventPost(req, res) {
   let body = "";
@@ -199,6 +318,17 @@ const server = http.createServer(function (req, res) {
     return;
   }
 
+  if (req.method === "GET" && urlPath === "/api/waitlist") {
+    const userId = new URL(req.url, "http://localhost").searchParams.get("user_id") || "";
+    handleWaitlistGet(req, res, userId);
+    return;
+  }
+
+  if (req.method === "POST" && urlPath === "/api/waitlist") {
+    handleWaitlistPost(req, res);
+    return;
+  }
+
   const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
   const requested = path.join(ROOT, safePath === "/" ? "index.html" : safePath);
 
@@ -214,5 +344,9 @@ const server = http.createServer(function (req, res) {
 });
 
 server.listen(PORT, function () {
-  console.log("Serving pooja-fakedoor on port " + PORT + (DATABASE_URL ? " (events -> Postgres)" : " (events -> console only, no DATABASE_URL)"));
+  console.log(
+    "Serving pooja-fakedoor on port " +
+      PORT +
+      (DATABASE_URL ? " (events + waitlist -> Postgres)" : " (events -> console, waitlist -> in-memory, no DATABASE_URL)")
+  );
 });
